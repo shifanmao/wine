@@ -285,18 +285,23 @@ pca <- princomp(train, cor=TRUE)
 summary(pca)
 ```
 
-```{r, echo=FALSE, fig.width = 8, fig.height = 4}
+```{r, echo=FALSE, fig.width = 6, fig.height = 3}
 plot(pca,type="line")
 ```
 
 We fist note that the first two principle components are most dominant after transformation. Therefore it is reasonable to look at the first two comonents of the features and responses.
 
-```{r message=FALSE, echo=FALSE, fig.width = 10, fig.height = 10}
+```{r warning=FALSE, echo=FALSE, message=FALSE}
 library(ggbiplot)
 pca <- princomp(train, scale=TRUE, cor=TRUE)
-ggbiplot(pca, obs.scale = 1, var.scale = 1, groups=train.color,
-              varname.size = 5, labels.size=10, varname.adjust=3,
+plot.pca <- ggbiplot(pca, obs.scale = 1, var.scale = 1, groups=train.color,
+              varname.size = 5., labels.size=10, varname.adjust=2,
               ellipse = TRUE, circle = TRUE,alpha_arrow = 1)
+plot.pca <- plot.pca + ylim(-5, 5) + xlim(-7,7)
+```
+
+```{r, echo=FALSE, warning=FALSE, fig.width = 8, fig.height = 8}
+print(plot.pca)
 ```
 
 Similar to what we found in ridge regression, the feature "alcohol" is positively correlated with "quality" Additionally, the features "density" and "volatile.acidity" are negatively correlated with "quality".
@@ -304,13 +309,12 @@ Similar to what we found in ridge regression, the feature "alcohol" is positivel
 \subsection{Support-Vector Machines}
 
 ```{r}
-svm <- svm(model.matrix(~ ., train[,1:p]),train[,p+1],
-           scale = FALSE, kernel = "radial", cross=10)
+# svm <- svm(model.matrix(~ ., train[,1:p]),train[,p+1],
+#            scale = FALSE, kernel = "radial", cross=10)
 ```
 
 ```{r, echo=FALSE}
-cat('Cross Validation Error using SVM =',svm$tot.MSE)
+# cat('Cross Validation Error using SVM =',svm$tot.MSE)
 ```
-
 
 \subsection{Basis expansion}
