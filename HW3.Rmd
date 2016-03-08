@@ -94,7 +94,7 @@ In conclusion, the estimated beta of ridge logistic regression is orthogonal to 
 \section{Problem 5}
 
 ```{r message=FALSE}
-# setwd('~shifan/Dropbox/STANFORD/15Winter/STATS315a/hw3')
+# setwd('~shifan/Dropbox/STANFORD/15Winter/STATS315a/hw3/wine')
 
 train <- read.csv("vcdata.csv")
 N = nrow(train)
@@ -199,7 +199,7 @@ cv.err <- cv.glm(train, model, K = 10)$delta
 ```
 
 ```{r, echo=FALSE}
-cat('Cross Validation Error using Linear regression =',cv.err)
+cat('CV-MSE using Linear regression =',cv.err[2])
 ```
 
 Make prediction with linear regression and write to file
@@ -231,6 +231,8 @@ cv.ridge.err=cv.glmnet(model.matrix(~ ., train[,1:p]),train[,p+1], lambda=lambda
 
 ```{r, echo=FALSE, fig.width = 10, fig.height = 5}
 plot(cv.ridge.err)
+cat('CV-MSE using Ridge Regression =',
+    cv.ridge.err$cvm[cv.ridge.err$lambda==cv.ridge.err$lambda.min])
 ```
 
 and L-1 norm penalties (lasso).
@@ -242,9 +244,11 @@ cv.lasso.err <- cv.glmnet(model.matrix(~ ., train[,1:p]),train[,p+1], alpha=1)
 
 ```{r, echo=FALSE, fig.width = 10, fig.height = 5}
 plot(cv.lasso.err)
+cat('CV-MSE using Lasso Regression =',
+    cv.lasso.err$cvm[cv.lasso.err$lambda==cv.lasso.err$lambda.min])
 ```
 
-As shown from the above comparisons, Lasso provides an regularized regression model which yields lower MSE with modest choice of regularization parameter $\lambda$ around $10^{-7.5}$ and MSE $\approx 0.27$. With this choice of degree of regularization, we choose to perform lasso and write to the results
+As shown from the above comparisons, lasso and ridge regressions do not provide improved models with lower CV-MSE than linear regression without regularization.
 
 ```{r}
 lasso.opt <- glmnet(model.matrix(~ ., train[,1:p]),train[,p+1], lambda=10^(-5),alpha=1)
@@ -257,6 +261,7 @@ write(pred_lasso,file="lasso.txt",sep="\n")
 In order to examine the dependence of MSE on subset size (of features), we use subset selection to find how MSE varies with diffferent selection of feature subsets. In particular, we start with linear regression model without regularization.
 
 ```{r}
+# method='forward'
 method='exhaustive'
 subset.error <- array(0,c(1,p))
 for (subset.size in 1:p){
@@ -270,8 +275,9 @@ for (subset.size in 1:p){
 }
 ```
 
-```{r, echo=FALSE, fig.width = 10, fig.height = 5}
+```{r, echo=FALSE, fig.width = 6, fig.height = 3}
 plot(1:p,subset.error,type="o",xlab="Subset Size", ylab="CV Error")
+cat('CV-MSE using subset selection (full model) =',subset.error[p])
 ```
 
 As shown in the previous figure, cross-validation (CV) error of subset selection mostly monotonically decreases (except a local minimum at subset size 7 features) with subset size. CV error achieves minimum when all features are used. We attribute this to the limited size of feature space and large dataset. Therefore we conclude that all features will need to be used for predictions.
@@ -281,7 +287,7 @@ As shown in the previous figure, cross-validation (CV) error of subset selection
 Next to elucidate the role of each feature in predicting the wine "quality", we perform principle component analysis to look at the correlations of each feature and "quality".
 
 ```{r}
-pca <- princomp(train, cor=TRUE)
+pca <- princomp(train, scale=TRUE, cor=TRUE)
 summary(pca)
 ```
 
@@ -293,28 +299,93 @@ We fist note that the first two principle components are most dominant after tra
 
 ```{r warning=FALSE, echo=FALSE, message=FALSE}
 library(ggbiplot)
-pca <- princomp(train, scale=TRUE, cor=TRUE)
 plot.pca <- ggbiplot(pca, obs.scale = 1, var.scale = 1, groups=train.color,
-              varname.size = 5., labels.size=10, varname.adjust=2,
+              varname.size = 3.7, labels.size=10, varname.adjust=2,
               ellipse = TRUE, circle = TRUE,alpha_arrow = 1)
 plot.pca <- plot.pca + ylim(-5, 5) + xlim(-7,7)
 ```
 
-```{r, echo=FALSE, warning=FALSE, fig.width = 8, fig.height = 8}
+```{r, echo=FALSE, warning=FALSE, fig.width = 6, fig.height = 6}
 print(plot.pca)
 ```
 
 Similar to what we found in ridge regression, the feature "alcohol" is positively correlated with "quality" Additionally, the features "density" and "volatile.acidity" are negatively correlated with "quality".
 
+Next we use the principle components of the predictors and use regression model to predict "quality".
+
+```{r}
+train.pca <- princomp(model.matrix(~ ., train[,1:p]), scale=TRUE, cor=TRUE)
+lm.pca.ridge <- glmnet(train.pca$scores,train[,p+1], alpha=0)
+cv.pca.ridge.err=cv.glmnet(train.pca$scores,train[,p+1], alpha=0)
+```
+
+```{r, echo=FALSE, fig.width = 10, fig.height = 5}
+plot(cv.pca.ridge.err)
+cat('CV-MSE using PCA Ridge Regression =',
+    cv.pca.ridge.err$cvm[cv.pca.ridge.err$lambda==cv.pca.ridge.err$lambda.min])
+```
+
 \subsection{Support-Vector Machines}
 
 ```{r}
-# svm <- svm(model.matrix(~ ., train[,1:p]),train[,p+1],
-#            scale = FALSE, kernel = "radial", cross=10)
+svm <- svm(model.matrix(~ ., train[,1:p]),train[,p+1],
+           scale = FALSE, kernel = "radial", cross=10)
 ```
 
 ```{r, echo=FALSE}
-# cat('Cross Validation Error using SVM =',svm$tot.MSE)
+cat('Cross Validation Error using SVM =',svm$tot.MSE)
 ```
 
 \subsection{Basis expansion}
+
+From the PCA analysis, we observed correlations between some predictors. Therefore we consider the interactions between predictors. We start with linear regression with interactio terms (2nd order interactions).
+
+```{r}
+model <- glm(quality~.^2, data=train)
+cv.err <- cv.glm(train, model, K = 10)$delta
+cat('CV-MSE using Linear regression =',cv.err[2])
+```
+
+Next we consider ridge regression, again with 2nd order interactions.
+
+```{r}
+# note default number of folds in cross-validation is 10 in package cv.glmnet
+lm.int.ridge <- glmnet(model.matrix(~ .^2, train[,1:p]),train[,p+1], lambda=lambda, alpha=0)
+cv.int.ridge.err=cv.glmnet(model.matrix(~ .^2, train[,1:p]),train[,p+1], lambda=lambda, alpha=0)
+```
+
+```{r, echo=FALSE, fig.width = 10, fig.height = 5}
+plot(cv.int.ridge.err)
+cat('CV-MSE using Ridge Regression =',
+    cv.int.ridge.err$cvm[cv.int.ridge.err$lambda==cv.int.ridge.err$lambda.min])
+```
+
+and write to output
+
+```{r}
+ridge.int.opt <- glmnet(model.matrix(~ .^2, train[,1:p]),train[,p+1], lambda=cv.int.ridge.err$lambda.min,alpha=0)
+pred.ridge.int <- predict(ridge.int.opt,newx=model.matrix(~.^2,test))
+write(pred.ridge.int,file="ridge_int.txt",sep="\n")
+```
+
+Now consider lasso regression with interaction terms.
+
+```{r}
+# note default number of folds in cross-validation is 10 in package cv.glmnet
+lm.int.lasso <- glmnet(model.matrix(~ .^2, train[,1:p]),train[,p+1], lambda=lambda, alpha=1)
+cv.int.lasso.err=cv.glmnet(model.matrix(~ .^2, train[,1:p]),train[,p+1], lambda=lambda, alpha=1)
+```
+
+```{r, echo=FALSE, fig.width = 10, fig.height = 5}
+plot(cv.int.lasso.err)
+cat('CV-MSE using Ridge Regression =',
+    cv.int.lasso.err$cvm[cv.int.lasso.err$lambda==cv.int.lasso.err$lambda.min])
+```
+
+and write to output
+
+```{r}
+lasso.int.opt <- glmnet(model.matrix(~ .^2, train[,1:p]),train[,p+1], lambda=cv.int.lasso.err$lambda.min,alpha=1)
+pred.lasso.int <- predict(lasso.int.opt,newx=model.matrix(~.^2,test))
+write(pred.lasso.int,file="lasso_int.txt",sep="\n")
+```
