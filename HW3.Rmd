@@ -1,21 +1,134 @@
 ---
-title: "Stats 315 Data Challenge: Quality Prediction of Portuguese Wine"
+title: "Stats 315 Homework 3"
 author: "Shifan Mao, Chen Xue"
 date: "March 6, 2016"
-output: pdf_document
+output:
+  pdf_document:
+    number_sections: true
 ---
 
-\section{Data Pre-processing}
+\section{Problem 1 (ESL18.9)}
 
-```{r message=FALSE, echo=FALSE}
-library(MASS)
-library(genridge)
-library(mcmc)
-library(glmnet)
-library(boot)
-library(leaps)
-set.seed(23)
+The optimal seperating hyperplane makes the wider margin, since the minimal norm linear-square solution has more stricted conditions that linear square solution with all zero residuals. So the maximimal distance that the minimal norm can reach is not wider than that of optimal seperating hyperplane.
+
+We first initialize the datapoints (x,y).
+
+```{r message=FALSE}
+library('e1071')
+set.seed(1)
+x = matrix(c(rnorm(10*30,-1,1), rnorm(10*30,1,1)), nrow = 20, byrow = TRUE)
+y = rep(c(-1,1), each = 10)
 ```
+
+Then we solve minimal norm solution in linear square solutions
+
+```{r}
+model_0 = svd(x)
+beta_0 = model_0$v %*% diag(1/model_0$d) %*% t(model_0$u) %*% y
+norm_0 = sqrt(t(beta_0) %*% beta_0)
+project_data_0 = c(x %*% beta_0) / norm_0
+```
+
+Next we look for theoptimal seperating hyperplane (i.e. linear kernel SVM)
+
+```{r}
+model = svm(x, y, scale = FALSE, kernel = "linear")
+beta = t(model$SV) %*% model$coefs
+norm = sqrt(t(beta) %*% beta)
+project_data = c(x %*% beta) / norm
+```
+
+To make a comparison, we plot the projected data coordinates of dataset with different response labels ordered by data ID.
+
+```{r, echo=FALSE, fig.width = 8, fig.height = 3}
+par(mfrow = c(1,2))
+plot(project_data_0, ylim = c(-6,6), xlab = "data ID", ylab = "projected data coordinate", main = "minimal norm solution")
+plot(project_data, ylim = c(-6,6), xlab = "data ID", ylab = "projected data coordinate", main = "optimal seperating hyperplane")
+```
+
+In conclusion, from the figure we can see that the distance between projected data in the optimal seperating hyperplane case is wider than that in the minimal norm linear-square solution case.
+
+\clearpage
+\section{Problem 3}
+
+We initialize (x,y) dataset.
+
+```{r message=FALSE}
+library('e1071')
+library('glmnet')
+set.seed(5)
+x = matrix(c(rnorm(25*2,mean=-1,sd=1),rnorm(25*2,mean=1,sd=1)), nrow = 50, byrow = TRUE)
+y = rep(c(-1,1), each = 25)
+```
+
+We first find the optimal seperating hyperplane (i.e. linear kernel SVM)
+
+```{r}
+model = svm(x, factor(y), kernel = "linear", cost = 1e4)
+beta = t(model$SV) %*% model$coefs
+norm = sqrt(t(beta) %*% beta)
+beta_normalized = c(beta) / norm
+```
+
+Then we implment ridge regression
+
+```{r}
+# lambda = exp(seq(from = 0, to = log(1e-5), length = 300))
+lambda <- 10^seq(from=5,to=-5,by=-0.1)
+model2 = glmnet(x, y, alpha=0, standardize=FALSE, family="binomial", lambda=lambda)
+beta2 = coef(model2)[-1,]
+norm2 = sqrt(diag(t(beta2)%*%beta2))
+beta2_normalized = scale(beta2, center = FALSE, scale = norm2)
+```
+
+To make a comparison, we plot the quantity $|\langle \theta_{\lambda}, \beta_{svm} \rangle|$ with $\lambda$ approaching $0$.
+
+```{r}
+inner_product = t(beta_normalized)%*%beta2_normalized
+par(mfrow = c(1,1))
+plot(lambda, abs(inner_product), log="x", xlab = expression(lambda), ylab = "|Inner product|")
+```
+
+In conclusion, the estimated beta of ridge logistic regression is orthogonal to the separating hyperplane when lambda approaches to 0.
+
+\section{Problem 5}
+
+```{r message=FALSE}
+# setwd('~shifan/Dropbox/STANFORD/15Winter/STATS315a/hw3')
+
+train <- read.csv("vcdata.csv")
+N = nrow(train)
+attach(train)
+```
+
+We construct natural spline
+
+```{r}
+library(splines)
+model <- lm( train$y~ ns(train$t, df = 5, intercept=TRUE) + 
+                      ns(train$t, df = 5, intercept=TRUE):x.1 + 
+                      ns(train$t, df = 5, intercept=TRUE):x.2 -1)
+```
+
+Next we make predictions using the model
+
+```{r}
+newx <- data.frame(t=train$t, x.1 = rep(1,N), x.2 = rep(1,N))
+pred <- predict(model, interval="confidence", type="terms", newdata = newx)
+```
+
+Now we plot the coefficients along with confidence interval
+
+```{r, echo=FALSE}
+matplot(train$t, cbind(pred$fit, pred$lwr, pred$upr),
+        lty=c(rep(1,3),rep(2,6)),col=rep(1:3,3),
+        type="l",xlab="t",ylab="Coefficients")
+legend("topright",legend=c(expression(beta[0]),expression(beta[1]),expression(beta[2])),lty=1,col=1:3)
+```
+
+\clearpage
+\section{Stats 315 Data Challenge: Quality Prediction of Portuguese Wine}
+\subsection{Data Pre-processing}
 
 In this problem, we are given a dataset of Portuguese wines with containing wine properties (e.g."color", "citric.acid", "pH") and their "qualitiy", an integer evaluated by wine experts.
 We aim to predict "quality" of Portuguese wines based on the provided properties of each wine.
@@ -32,7 +145,17 @@ To achieve this, here is an outline the different methods we are going implement
 \item Basis expansion. Interactions and transformations of original feature sets will be considered for potential improvements of the models in predicting wine "quality".
 \end{itemize}
 
-We start with first loading the trainig and test data
+We start with first loading the relavant packages and reading trainig and test data
+
+```{r message=FALSE}
+library(MASS)
+library(genridge)
+library(mcmc)
+library(glmnet)
+library(boot)
+library(leaps)
+set.seed(23)
+```
 
 ```{r}
 setwd('~shifan/Dropbox/STANFORD/15Winter/STATS315a/hw3/wine')
@@ -57,12 +180,15 @@ As we can see, since the first feature (labeled "X") is clearly only a label in 
 train <- train[,2:ncol(train)]
 test <- test[,2:ncol(test)]
 
-train[,1] <- model.matrix(~train[,1])[,2]
-test[,1] <- model.matrix(~test[,1])[,2]
+train.color <- train[,1]
+test.color <- test[,1]
+
+train[,1] <- as.integer(model.matrix(~train.color)[,2])
+test[,1] <- as.integer(model.matrix(~test.color)[,2])
 p = ncol(train) - 1; # Number of features
 ```
 
-\section{Linear regressions (and with regularization)}
+\subsection{Linear regressions (and with regularization)}
 
 We first implement ordinary linear regression without regularization. In particular, $k$-fold cross validation is used to evaluate the error rate of the regression model.
 
@@ -89,14 +215,21 @@ Next we implement ridge regression. We plot the change of regression coefficient
 # Ridge regression
 lambda <- 10^seq(-5,5,0.1)
 model <- ridge(train$quality~., train[,1:p], lambda = lambda)
+```
+
+```{r, echo=FALSE, fig.width = 10, fig.height = 10}
 traceplot(model,X="df")
 ```
 
-To further investigate the role of regularization, we evaluate the mean-squared error (MSE) of regularized regression using L1 (lasso)
+To further investigate the role of regularization, we evaluate the 10-fold cross-validation mean-squared error (MSE) of regularized regression using L1 (lasso)
 
 ```{r}
+# note default number of folds in cross-validation is 10 in package cv.glmnet
 lm.ridge <- glmnet(model.matrix(~ ., train[,1:p]),train[,p+1], lambda=lambda, alpha=0)
 cv.ridge.err=cv.glmnet(model.matrix(~ ., train[,1:p]),train[,p+1], lambda=lambda, alpha=0)
+```
+
+```{r, echo=FALSE, fig.width = 10, fig.height = 5}
 plot(cv.ridge.err)
 ```
 
@@ -105,6 +238,9 @@ and L-1 norm penalties (lasso).
 ```{r}
 lm.lasso <- glmnet(model.matrix(~ ., train[,1:p]),train[,p+1], alpha=1)
 cv.lasso.err <- cv.glmnet(model.matrix(~ ., train[,1:p]),train[,p+1], alpha=1)
+```
+
+```{r, echo=FALSE, fig.width = 10, fig.height = 5}
 plot(cv.lasso.err)
 ```
 
@@ -116,7 +252,7 @@ pred_lasso <- predict(lasso.opt,newx=model.matrix(~.,test))
 write(pred_lasso,file="lasso.txt",sep="\n")
 ```
 
-\section{Subset selection}
+\subsection{Subset selection}
 
 In order to examine the dependence of MSE on subset size (of features), we use subset selection to find how MSE varies with diffferent selection of feature subsets. In particular, we start with linear regression model without regularization.
 
@@ -132,32 +268,49 @@ for (subset.size in 1:p){
   cv.err <- cv.glm(subset, lm, K = 10)$delta
   subset.error[subset.size] <- cv.err[2]
 }
+```
+
+```{r, echo=FALSE, fig.width = 10, fig.height = 5}
 plot(1:p,subset.error,type="o",xlab="Subset Size", ylab="CV Error")
 ```
 
 As shown in the previous figure, cross-validation (CV) error of subset selection mostly monotonically decreases (except a local minimum at subset size 7 features) with subset size. CV error achieves minimum when all features are used. We attribute this to the limited size of feature space and large dataset. Therefore we conclude that all features will need to be used for predictions.
 
-\section{Principle Components Analysis}
+\subsection{Principle Components Analysis}
 
 Next to elucidate the role of each feature in predicting the wine "quality", we perform principle component analysis to look at the correlations of each feature and "quality".
 
 ```{r}
 pca <- princomp(train, cor=TRUE)
-summary(pca) # print variance accounted for 
+summary(pca)
 ```
 
-```{r, echo=FALSE}
+```{r, echo=FALSE, fig.width = 8, fig.height = 4}
 plot(pca,type="line")
 ```
 
-![The first two principle components of "wine" data](pca.png)
-
 We fist note that the first two principle components are most dominant after transformation. Therefore it is reasonable to look at the first two comonents of the features and responses.
 
-```{r, echo=FALSE}
-# biplot(fit)
+```{r message=FALSE, echo=FALSE, fig.width = 10, fig.height = 10}
+library(ggbiplot)
+pca <- princomp(train, scale=TRUE, cor=TRUE)
+ggbiplot(pca, obs.scale = 1, var.scale = 1, groups=train.color,
+              varname.size = 5, labels.size=10, varname.adjust=3,
+              ellipse = TRUE, circle = TRUE,alpha_arrow = 1)
 ```
 
 Similar to what we found in ridge regression, the feature "alcohol" is positively correlated with "quality" Additionally, the features "density" and "volatile.acidity" are negatively correlated with "quality".
 
-\section{Basis expansion}
+\subsection{Support-Vector Machines}
+
+```{r}
+svm <- svm(model.matrix(~ ., train[,1:p]),train[,p+1],
+           scale = FALSE, kernel = "radial", cross=10)
+```
+
+```{r, echo=FALSE}
+cat('Cross Validation Error using SVM =',svm$tot.MSE)
+```
+
+
+\subsection{Basis expansion}
